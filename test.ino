@@ -113,9 +113,6 @@ void setup(){
 
 
 void serialEvent() {
-  char* testValue;
-  readRegister(BW_RATE, 1, testValue);
-  Serial.println(testValue);
   if (Serial.available() > 0) {
     // get the new byte:
     Serial.flush();
@@ -147,7 +144,6 @@ void serialEvent() {
   } 
 }
 void loop(){
-  
   if (readEnable) {
     unsigned long elapsedTime = millis() - startMillis;
 //    Serial.println(elapsedTime);
