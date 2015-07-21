@@ -105,7 +105,7 @@ void setup(){
   writeRegister(POWER_CTL, 0x08);  //Measurement mode
   readRegister(INT_SOURCE, 1, values); //Clear the interrupts from the INT_SOURCE register.
   
-  
+  writeRegister(BW_RATE, 0x0F); // sampling rate;
   
   readRegister(DATAX0, 6, values);
 }
@@ -113,6 +113,9 @@ void setup(){
 
 
 void serialEvent() {
+  char* testValue;
+  readRegister(BW_RATE, 1, testValue);
+  Serial.println(testValue);
   if (Serial.available() > 0) {
     // get the new byte:
     Serial.flush();
