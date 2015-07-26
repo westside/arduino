@@ -1,5 +1,7 @@
 //Add the SPI library so we can communicate with the ADXL345 sensor
 #include <SPI.h>
+#include <Wire.h>
+#include "Adafruit_DRV2605.h"
 
 //Assign the Chip Select signal to pin 10.
 int CS=10;
@@ -47,21 +49,24 @@ int x,y,z;
 double xg, yg, zg;
 char tapType=0;
 int intType;
-int MOTOR_PIN = 3;
+int MOTOR_PIN = 5;
 
-
-int count = 0;
 String value = "";
 
-const int SIZE = 1; // send to serial every 3 times
-unsigned long timeData[SIZE] = {0}; 
-int data[SIZE][3] = {{0,0,0}}; //, {0,0,0}, {0,0,0}};
+unsigned long timeData = 0; 
+
+int operationMode = 1; // 1 - real time, 2 - test
+
 bool readEnable = false;
-int duration;
-int sampleDuration;
 int intensity = 0;
+int testIntensity = 0;
+int upTriggerTime;
+int downTriggerTime;
+int samplingDuration;
+
+Adafruit_DRV2605 drv;
+
 unsigned long startMillis = 0;
-int delayMicros = 0;
 
 void setup(){ 
   
@@ -108,60 +113,97 @@ void setup(){
   writeRegister(BW_RATE, 0x0F); // sampling rate;
   
   readRegister(DATAX0, 6, values);
+  
+  
+  // motor drive
+  drv.begin();
+  drv.setMode(DRV2605_MODE_PWMANALOG);
+  drv.writeRegister8(0x1A, 0x76);
+  pinMode(MOTOR_PIN, OUTPUT);   // sets the pin as output
 }
-
-
 
 void serialEvent() {
   if (Serial.available() > 0) {
-    // get the new byte:
-    Serial.flush();
     int mode = Serial.parseInt(); 
-    if (mode == 2) {
-      intensity = Serial.parseInt();
-      duration = Serial.parseInt();
-      sampleDuration = Serial.parseInt();
-      delayMicros = Serial.parseInt();
-//      Serial.flush();
+    if (mode == 1) {
+      Serial.flush();
+      operationMode = mode;
       while(Serial.available()) {
         Serial.read();
       }
-      #ifdef DEBUG
-      Serial.print(millis());
-      Serial.print(",");
-      Serial.print(intensity);
-      Serial.print(",");
-      Serial.print(duration);
-      Serial.print(",");
-      Serial.println(sampleDuration);
-      #endif      
+    } else if (mode == 2) {
+      testIntensity = Serial.parseInt();
+      upTriggerTime = Serial.parseInt();
+      downTriggerTime = Serial.parseInt();
+      samplingDuration = Serial.parseInt();
+      while(Serial.available()) {
+        Serial.read();
+      }
+      
+      operationMode = mode;
+      
       startMillis = millis();
       readEnable = true;
-      readAcc();
-      analogWrite(MOTOR_PIN, intensity);
-
+    
     }
   } 
 }
 void loop(){
-  if (readEnable) {
-    unsigned long elapsedTime = millis() - startMillis;
-//    Serial.println(elapsedTime);
+  if (operationMode == 1) {
+    // real time mode
+    readAcc();
     
-    unsigned long microsBefore = micros();
-    if (elapsedTime > sampleDuration) {
-      readEnable = false;
-    } else if (elapsedTime > duration) {
-      if (intensity > 0) {
-        analogWrite(MOTOR_PIN, 0);  
-        intensity = 0;
-      }
-    } 
-      readAcc();    
-//      delayMicroseconds(1500);
-//      Serial.println(micros() - microsBefore);
-//      delayMicroseconds(delayMicros);
+    drv.writeRegister8(0x1D, 0x01); // N_PWM_ANALOG = 0, LRA_OPEN_LOOP=1
+  drv.writeRegister8(0x1A, 0xB6);
+  readRegister();
+  Serial.println("open loop");
+  beep();
+  
+   // close loop
+  drv.writeRegister8(0x1D, 0x00); // N_PWM_ANALOG = 0, LRA_OPEN_LOOP=0 (auto resonance mode)
+  drv.writeRegister8(0x1A, 0x36);
+  readRegister();
+  Serial.println("close loop");
+  beep(); 
+
+    
+  } else if (operationMode == 2) {
+    // test mode
+    if (readEnable) {
+      unsigned long elapsedTime = millis() - startMillis;
+//      Serial.print(elapsedTime);
+      unsigned long microsBefore = micros();
+      if (elapsedTime > samplingDuration) {
+        readEnable = false;
+//        Serial.print("  1 ");
+      } else if (elapsedTime > downTriggerTime) {
+        
+//        Serial.print("  2 "); 
+        if (intensity > 0) {
+          
+//          Serial.print("triggered down ");   
+          analogWrite(MOTOR_PIN, 0);  
+          intensity = 0;
+        }
+      } else if (elapsedTime > upTriggerTime) {
+//        Serial.print("  3 ");
+//        Serial.print(operationMode);
+//        Serial.print(" ");
+//        Serial.print(downTriggerTime);
+//        Serial.print(" ");
+//        Serial.print(samplingDuration);
+//        Serial.print(" ");
+        if (testIntensity != intensity) {
+          analogWrite(MOTOR_PIN, testIntensity);
+          intensity = testIntensity;
+        }
+      } 
+      readAcc();
+    } else {
+      Serial.flush();
     }
+   
+  } 
 }
 
 void readAcc() {
@@ -185,28 +227,8 @@ void readAcc() {
   //    zg = z * 0.0078;
   
   
-      int mode = count % SIZE;
-      timeData[mode] = micros();
-      data[mode][0] = x;
-      data[mode][1] = y;
-      data[mode][2] = z;
-      count++;
-      if (mode == SIZE-1) {
-        unsigned long first = timeData[0];
-        Serial.print(first,DEC);
-        Serial.print(",");
-        Serial.print(data[0][0]);
-        Serial.print(",");
-        Serial.print(data[0][1]);
-        Serial.print(",");
-        Serial.print(data[0][2]);
-//        Serial.print(String(first, DEC) + "," + String(data[0][0]) + "," + String(data[0][1]) + "," + String(data[0][2]));
-        for (int i = 1 ; i < SIZE ; i++) {
-           Serial.print("," + String(timeData[i] - first, DEC) + "," + String(data[i][0]) + "," + String(data[i][1]) + "," + String(data[i][2]));
-        }
-        Serial.println();
-      } 
-      Serial.flush();
+      timeData = micros();
+      Serial.println(String(timeData, DEC) + "," + String(intensity) + "," + String(x) + "," + String(y) + "," + String(z));
       
 }
 
@@ -254,4 +276,20 @@ void tap(void){
   readRegister(INT_SOURCE, 1, values); 
   if(values[0] & (1<<5))tapType=2;
   else tapType=1;;
+}
+
+void readRegister() {
+    Serial.print(drv.readRegister8(0x1A));
+    Serial.print(" ");
+    Serial.print(drv.readRegister8(0x1D));
+    Serial.println();
+}
+
+void beep() {
+
+   analogWrite(MOTOR_PIN, 30); 
+   delay(1000);
+  analogWrite(MOTOR_PIN, 20); 
+   delay(1000);
+   
 }
