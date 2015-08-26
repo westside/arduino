@@ -670,9 +670,6 @@ void setPWMFreq(uint8_t addr, float freq) {
   prescaleval -= 1;
   uint8_t prescale = floor(prescaleval + 0.5);
 
-#ifdef DEBUG
-  Serial.print("prescale value (>= 3): ");  Serial.println(prescale);
-#endif
 
   uint8_t oldmode = read8(addr, PCA9685_MODE1); //read mode1 for selected slave
   uint8_t newmode = (oldmode & 0x7F) | 0x10; //sleep mode
@@ -685,9 +682,6 @@ void setPWMFreq(uint8_t addr, float freq) {
 }
 
 void setPWM(uint8_t addr, uint8_t num, uint16_t on, uint16_t off) {
-#ifdef DEBUG
-  //  Serial.print("motor: ");  Serial.print(num); Serial.print(", on: ");  Serial.print(on); Serial.print(", off: ");  Serial.println(off);
-#endif
   Wire.beginTransmission(addr);
   Wire.write(LED0_ON_L + 4 * num);
   Wire.write(on);
@@ -803,41 +797,15 @@ void updateMotorVoltage(float x, float y, int modetype) {
     }
   }
 
-#ifdef DEBUG
-  Serial.println("motor dist: ");
-  for (int i = 0; i < numMotor; i++) {
-    Serial.print(i); Serial.print(": "); Serial.print(motordists[i]); Serial.print(", ");
-  }
-  Serial.println("");
-  Serial.print("motor changed: ");  Serial.println(motorChanged); Serial.print("active motors: ");
-  for (int i = 0; i < numMotor; i++) {
-    if (activeMotor[i] == 1) {
-      Serial.print(i); Serial.print(" ");
-    }
-  }
-  Serial.println("");
-#endif
 
   if (motorChanged) {
     setPin(PCA9685_SLAVEADR1, 61, 0);
-#ifdef DEBUG
-    Serial.println("temporary stop all motors");
-#endif
   }
   for (int i = 0; i < numMotor; i++) {
     if (activeMotor[i] == 1) {
       setPin(PCA9685_SLAVEADR1, motorPlacement[i], motorVoltage[i]);
     }
   }
-#ifdef DEBUG
-  Serial.println("motor strength: ");
-  for (int i = 0; i < numMotor; i++) {
-    if (activeMotor[i] == 1) {
-      Serial.print(i); Serial.print(": "); Serial.print(motorVoltage[i]); Serial.print(", ");
-    }
-  }
-  Serial.println("");
-#endif
 }
 
 float disttovolt(float distance) {
